@@ -1,6 +1,5 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct Item {
@@ -14,7 +13,13 @@ pub struct Item {
 
 impl Item {
     pub fn is_available(&self) -> bool {
-        return self.count > 0
+        return self.count > 0;
+    }
+}
+
+impl AsRef<Item> for Item {
+    fn as_ref(&self) -> &Item {
+        &self
     }
 }
 
@@ -45,4 +50,3 @@ impl Into<Value> for Item {
         Value::Object(obj)
     }
 }
-
