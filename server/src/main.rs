@@ -6,10 +6,10 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::{http, Body, Request, Response, Server};
 use std::net::SocketAddr;
 
+mod db;
 mod handlers;
 mod items;
 mod settings;
-mod db;
 mod utils;
 
 async fn route_service(req: Request<Body>, addr: String) -> Result<Response<Body>, hyper::Error> {

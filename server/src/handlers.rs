@@ -1,13 +1,12 @@
+use crate::db;
 use crate::items::Item;
+use crate::utils;
 use http::header::{CONTENT_TYPE, LOCATION};
 use http::request::Parts;
 use http::{HeaderValue, StatusCode, Uri};
 use hyper::{Body, Response};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
-use crate::db;
-use crate::utils;
-
 
 fn create_response(status_code: StatusCode, body: String) -> Result<Response<Body>, hyper::Error> {
     Ok(Response::builder()
@@ -72,12 +71,18 @@ pub fn response_ok() -> Result<Response<Body>, hyper::Error> {
 
 // /items
 pub fn get_items() -> Result<Response<Body>, hyper::Error> {
-    let products: Vec<Value> = db::read_items()
-        .into_iter()
-        .map(|(_, item)| Item::into(item))
-        .collect();
+    let items = db::read_items();
+    match items {
+        Err(error) => create_response(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
+        Ok(items) => {
+            let items: Vec<Value> = items
+                .into_iter()
+                .map(|(_, item)| Item::into(item))
+                .collect();
 
-    create_response(StatusCode::OK, serde_json::to_string(&products).unwrap())
+            create_response(StatusCode::OK, serde_json::to_string(&items).unwrap())
+        }
+    }
 }
 
 // /item
@@ -87,14 +92,18 @@ pub fn get_item(parts: &Parts) -> Result<Response<Body>, hyper::Error> {
     if id.is_none() {
         return create_response(StatusCode::BAD_REQUEST, utils::ID_NOT_SENT.to_string());
     }
-    let id = id.unwrap();
 
-    let item = db::get_item(id);
-    if item.is_none() {
-        return create_response(StatusCode::BAD_REQUEST, utils::ID_NOT_FOUND.to_string());
+    match db::get_item(id.unwrap()) {
+        Err(error) => {
+            let status_code = if error == utils::ID_NOT_FOUND {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            create_response(status_code, error.to_string())
+        }
+        Ok(item) => create_response(StatusCode::OK, serde_json::to_string(&item).unwrap()),
     }
-
-    create_response(StatusCode::OK, serde_json::to_string(&item.unwrap()).unwrap())
 }
 
 // /add
@@ -121,9 +130,12 @@ pub async fn add_item(body: Body) -> Result<Response<Body>, hyper::Error> {
         .to_string();
 
     let new_id = db::get_new_id();
+    if let Err(error) = new_id {
+        return create_response(StatusCode::INTERNAL_SERVER_ERROR, error.to_string());
+    }
 
     let new_item = Item {
-        id: new_id.clone(),
+        id: new_id.as_ref().unwrap().clone(),
         name,
         image,
         count,
@@ -131,14 +143,11 @@ pub async fn add_item(body: Body) -> Result<Response<Body>, hyper::Error> {
         category,
     };
 
-    if !db::add_item(new_item) {
-        return create_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            utils::OPERATION_FAILED.to_string(),
-        );
+    if let Err(error) = db::add_item(new_item) {
+        return create_response(StatusCode::INTERNAL_SERVER_ERROR, error.to_string());
     }
 
-    create_response(StatusCode::OK, new_id)
+    create_response(StatusCode::OK, new_id.unwrap())
 }
 
 // /delete
@@ -148,14 +157,18 @@ pub fn delete_item(parts: &Parts) -> Result<Response<Body>, hyper::Error> {
     if id.is_none() {
         return create_response(StatusCode::BAD_REQUEST, utils::ID_NOT_SENT.to_string());
     }
-    let id = id.unwrap();
 
-    if !db::delete_item(id) {
-        // TODO separate id not found and operation failed errors
-        return create_response(StatusCode::INTERNAL_SERVER_ERROR, utils::ID_NOT_FOUND.to_string());
+    match db::delete_item(id.unwrap()) {
+        Err(error) => {
+            let status_code = if error == utils::ID_NOT_FOUND {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            create_response(status_code, error.to_string())
+        }
+        Ok(_) => create_response(StatusCode::OK, String::new()),
     }
-
-    create_response(StatusCode::OK, String::new())
 }
 
 // /purchase
@@ -170,10 +183,7 @@ pub fn buy_item(parts: &Parts) -> Result<Response<Body>, hyper::Error> {
     let count = count.unwrap_or(1);
 
     match db::purchase_item(id, count) {
-        Err(status) => return create_response(StatusCode::BAD_REQUEST, status.to_string()),
-        Ok(item) => {
-            let v: Value = Item::into(item);
-            return create_response(StatusCode::OK, v.to_string());
-        }
+        Err(error) => create_response(StatusCode::BAD_REQUEST, error.to_string()),
+        Ok(item) => create_response(StatusCode::OK, serde_json::to_string(&item).unwrap()),
     }
 }

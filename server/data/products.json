@@ -1,35 +1,11 @@
 [
   {
-    "id": "1",
-    "name": "MEN’S BEGINNER SNOWBOARDING BOOTS - SNB 100 - BLACK",
-    "image": "https://contents.mediadecathlon.com/p2290041/k$71f032e10ed40fd0e5bb5e937bb35d84/sq/mens-beginner-snowboarding-boots-snb-100-black.jpg?format=auto&f=969x969",
+    "id": "7",
+    "name": "KIDS’ AND ADULT SKIING AND SNOWBOARDING GOGGLES GOOD WEATHER - G 500 S3 - BLACK",
+    "image": "https://contents.mediadecathlon.com/p2267044/k$a8b9c5b319628e8fab09b1780a0555bd/sq/kids-and-adult-skiing-and-snowboarding-goggles-good-weather-g-500-s3-black.jpg?format=auto&f=969x969",
     "count": 0,
-    "price": 99.99,
-    "category": "Snowboard Boots"
-  },
-  {
-    "id": "2",
-    "name": "WOMEN'S FREESTYLE & ALL MOUNTAIN SNOWBOARD - ENDZONE 500",
-    "image": "https://contents.mediadecathlon.com/p1959402/k$ccaaf9468bc8872797b11df153f61a82/sq/womens-freestyle-and-all-mountain-snowboard-endzone-500.jpg?format=auto&f=969x969",
-    "count": 0,
-    "price": 199.99,
-    "category": "Snowboard"
-  },
-  {
-    "id": "3",
-    "name": "MEN'S FREESTYLE & ALL MOUNTAIN SNOWBOARD ENDZONE 500 BROKOVICH",
-    "image": "https://contents.mediadecathlon.com/p2290122/k$3bc319ad6b32f72d383d67ce34c922f0/sq/mens-freestyle-and-all-mountain-snowboard-endzone-500-brokovich.jpg?format=auto&f=969x969",
-    "count": 2,
-    "price": 199.99,
-    "category": "Snowboard"
-  },
-  {
-    "id": "4",
-    "name": "KIDS’ FREESTYLE ALL MOUNTAIN SNOWBOARD- ENDZONE JR 135 CM",
-    "image": "https://contents.mediadecathlon.com/p2033940/k$389ca9e3f2c55252191b4a0c637e7ebb/sq/kids-freestyle-all-mountain-snowboard-endzone-jr-135-cm.jpg?format=auto&f=969x969",
-    "count": 0,
-    "price": 129.99,
-    "category": "Snowboard"
+    "price": 29.99,
+    "category": "Snowboard Goggles"
   },
   {
     "id": "5",
@@ -48,11 +24,35 @@
     "category": "Snowboard Goggles"
   },
   {
-    "id": "7",
-    "name": "KIDS’ AND ADULT SKIING AND SNOWBOARDING GOGGLES GOOD WEATHER - G 500 S3 - BLACK",
-    "image": "https://contents.mediadecathlon.com/p2267044/k$a8b9c5b319628e8fab09b1780a0555bd/sq/kids-and-adult-skiing-and-snowboarding-goggles-good-weather-g-500-s3-black.jpg?format=auto&f=969x969",
+    "id": "4",
+    "name": "KIDS’ FREESTYLE ALL MOUNTAIN SNOWBOARD- ENDZONE JR 135 CM",
+    "image": "https://contents.mediadecathlon.com/p2033940/k$389ca9e3f2c55252191b4a0c637e7ebb/sq/kids-freestyle-all-mountain-snowboard-endzone-jr-135-cm.jpg?format=auto&f=969x969",
     "count": 0,
-    "price": 29.99,
-    "category": "Snowboard Goggles"
+    "price": 129.99,
+    "category": "Snowboard"
+  },
+  {
+    "id": "3",
+    "name": "MEN'S FREESTYLE & ALL MOUNTAIN SNOWBOARD ENDZONE 500 BROKOVICH",
+    "image": "https://contents.mediadecathlon.com/p2290122/k$3bc319ad6b32f72d383d67ce34c922f0/sq/mens-freestyle-and-all-mountain-snowboard-endzone-500-brokovich.jpg?format=auto&f=969x969",
+    "count": 2,
+    "price": 199.99,
+    "category": "Snowboard"
+  },
+  {
+    "id": "1",
+    "name": "MEN’S BEGINNER SNOWBOARDING BOOTS - SNB 100 - BLACK",
+    "image": "https://contents.mediadecathlon.com/p2290041/k$71f032e10ed40fd0e5bb5e937bb35d84/sq/mens-beginner-snowboarding-boots-snb-100-black.jpg?format=auto&f=969x969",
+    "count": 0,
+    "price": 99.99,
+    "category": "Snowboard Boots"
+  },
+  {
+    "id": "2",
+    "name": "WOMEN'S FREESTYLE & ALL MOUNTAIN SNOWBOARD - ENDZONE 500",
+    "image": "https://contents.mediadecathlon.com/p1959402/k$ccaaf9468bc8872797b11df153f61a82/sq/womens-freestyle-and-all-mountain-snowboard-endzone-500.jpg?format=auto&f=969x969",
+    "count": 0,
+    "price": 199.99,
+    "category": "Snowboard"
   }
 ]
