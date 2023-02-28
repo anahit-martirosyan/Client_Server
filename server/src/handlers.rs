@@ -1,12 +1,12 @@
-use crate::db;
-use crate::items::Item;
-use crate::utils;
+use crate::context::Context;
 use http::header::{CONTENT_TYPE, LOCATION};
 use http::request::Parts;
 use http::{HeaderValue, StatusCode, Uri};
 use hyper::{Body, Response};
-use serde_json::{Map, Value};
+use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::sync::Arc;
+use crate::utils::LocalError;
 
 fn create_response(status_code: StatusCode, body: String) -> Result<Response<Body>, hyper::Error> {
     Ok(Response::builder()
@@ -49,14 +49,12 @@ fn get_params(uri: &Uri) -> HashMap<String, String> {
         .unwrap_or_else(HashMap::new)
 }
 
-async fn get_json_from_body(body: Body) -> Option<Map<String, Value>> {
+async fn get_json_from_body(body: Body) -> Option<Value> {
     let body_bytes = hyper::body::to_bytes(body).await.ok()?;
 
     let json: Option<Value> = serde_json::from_slice(&body_bytes).ok();
-    let json: Option<&serde_json::Map<String, Value>> =
-        json.as_ref().and_then(|json: &Value| json.as_object());
 
-    json.cloned()
+    json
 }
 
 //
@@ -70,120 +68,162 @@ pub fn response_ok() -> Result<Response<Body>, hyper::Error> {
 }
 
 // /items
-pub fn get_items() -> Result<Response<Body>, hyper::Error> {
-    let items = db::read_items();
-    match items {
+pub async fn get_items(context: Arc<Context>) -> Result<Response<Body>, hyper::Error> {
+    match context.db.get_all_products().await {
         Err(error) => create_response(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
-        Ok(items) => {
-            let items: Vec<Value> = items
-                .into_iter()
-                .map(|(_, item)| Item::into(item))
-                .collect();
-
-            create_response(StatusCode::OK, serde_json::to_string(&items).unwrap())
-        }
+        Ok(items) => create_response(StatusCode::OK, items.to_string()),
     }
 }
 
 // /item
-pub fn get_item(parts: &Parts) -> Result<Response<Body>, hyper::Error> {
+pub async fn get_item(
+    parts: &Parts,
+    context: Arc<Context>,
+) -> Result<Response<Body>, hyper::Error> {
     let params = get_params(&parts.uri);
     let id = params.get("id");
     if id.is_none() {
-        return create_response(StatusCode::BAD_REQUEST, utils::ID_NOT_SENT.to_string());
+        return create_response(StatusCode::BAD_REQUEST, LocalError::IdNotSent.to_string());
     }
 
-    match db::get_item(id.unwrap()) {
+    let id = id.unwrap().parse::<i32>();
+    if id.is_err() {
+        return create_response(StatusCode::BAD_REQUEST, LocalError::IdNotFound.to_string());
+    }
+
+    match context.db.get_product(id.unwrap()).await {
         Err(error) => {
-            let status_code = if error == utils::ID_NOT_FOUND {
+            let status_code = if error == LocalError::IdNotFound {
                 StatusCode::BAD_REQUEST
             } else {
                 StatusCode::INTERNAL_SERVER_ERROR
             };
             create_response(status_code, error.to_string())
         }
-        Ok(item) => create_response(StatusCode::OK, serde_json::to_string(&item).unwrap()),
+        Ok(item) => create_response(StatusCode::OK, item.to_string()),
     }
 }
 
-// /add
-pub async fn add_item(body: Body) -> Result<Response<Body>, hyper::Error> {
-    let json = get_json_from_body(body).await;
+// /add_item
+pub async fn add_item(body: Body, context: Arc<Context>) -> Result<Response<Body>, hyper::Error> {
+    let mut json = get_json_from_body(body).await;
 
-    if json.is_none() {
-        return create_response(StatusCode::BAD_REQUEST, utils::WRONG_PARAMETERS.to_string());
-    }
-    let json = json.unwrap();
+    let json_map: Option<&mut serde_json::Map<String, Value>> = json
+        .as_mut()
+        .and_then(|json: &mut Value| json.as_object_mut());
 
-    if json.get("name").is_none() || json.get("price").is_none() || json.get("category").is_none() {
-        return create_response(StatusCode::BAD_REQUEST, utils::WRONG_PARAMETERS.to_string());
-    }
-
-    let name = json.get("name").unwrap().to_string();
-    let price = json.get("price").unwrap().as_f64().unwrap_or_default();
-    let category = json.get("category").unwrap().to_string();
-    let count = json.get("count").and_then(|c| c.as_i64()).unwrap_or(0);
-    let image = json
-        .get("image")
-        .and_then(|i| i.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    let new_id = db::get_new_id();
-    if let Err(error) = new_id {
-        return create_response(StatusCode::INTERNAL_SERVER_ERROR, error.to_string());
+    if json_map.is_none() {
+        return create_response(StatusCode::BAD_REQUEST, LocalError::WrongParameters.to_string());
     }
 
-    let new_item = Item {
-        id: new_id.as_ref().unwrap().clone(),
-        name,
-        image,
-        count,
-        price,
-        category,
-    };
+    let json_map = json_map.unwrap();
 
-    if let Err(error) = db::add_item(new_item) {
-        return create_response(StatusCode::INTERNAL_SERVER_ERROR, error.to_string());
+    if json_map.get("name").is_none()
+        || json_map.get("price").is_none()
+        || json_map.get("category").is_none()
+    {
+        return create_response(StatusCode::BAD_REQUEST, LocalError::WrongParameters.to_string());
     }
 
-    create_response(StatusCode::OK, new_id.unwrap())
+    json_map.entry("count").or_insert(json!(0));
+
+    match context.db.add_product(json!(json_map)).await {
+        Err(e) => create_response(StatusCode::BAD_REQUEST, e.to_string()),
+        Ok(id) => create_response(StatusCode::OK, id.to_string()),
+    }
 }
 
 // /delete
-pub fn delete_item(parts: &Parts) -> Result<Response<Body>, hyper::Error> {
+pub async fn delete_item(
+    parts: &Parts,
+    context: Arc<Context>,
+) -> Result<Response<Body>, hyper::Error> {
     let params = get_params(&parts.uri);
     let id = params.get("id");
     if id.is_none() {
-        return create_response(StatusCode::BAD_REQUEST, utils::ID_NOT_SENT.to_string());
+        return create_response(StatusCode::BAD_REQUEST, LocalError::IdNotSent.to_string());
+    }
+    let id = id.unwrap().parse::<i32>();
+    if id.is_err() {
+        return create_response(StatusCode::BAD_REQUEST, LocalError::IdNotFound.to_string());
     }
 
-    match db::delete_item(id.unwrap()) {
+    match context.db.delete_product(id.unwrap()).await {
         Err(error) => {
-            let status_code = if error == utils::ID_NOT_FOUND {
-                StatusCode::BAD_REQUEST
-            } else {
-                StatusCode::INTERNAL_SERVER_ERROR
-            };
-            create_response(status_code, error.to_string())
+            create_response(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+            // TODO check error types
         }
         Ok(_) => create_response(StatusCode::OK, String::new()),
     }
 }
 
 // /purchase
-pub fn buy_item(parts: &Parts) -> Result<Response<Body>, hyper::Error> {
+pub async fn buy_item(
+    parts: &Parts,
+    context: Arc<Context>,
+) -> Result<Response<Body>, hyper::Error> {
     let params = get_params(&parts.uri);
     let id = params.get("id");
-    let count: Option<i64> = params.get("count").and_then(|c| c.parse().ok());
     if id.is_none() {
-        return create_response(StatusCode::BAD_REQUEST, utils::ID_NOT_SENT.to_string());
+        return create_response(StatusCode::BAD_REQUEST, LocalError::IdNotSent.to_string());
     }
-    let id = id.unwrap();
-    let count = count.unwrap_or(1);
+    let id = id.unwrap().parse::<i32>();
+    if id.is_err() {
+        return create_response(StatusCode::BAD_REQUEST, LocalError::IdNotFound.to_string());
+    }
+    let count: i32 = params
+        .get("count")
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(1);
+    let user_id: Option<i32> = params.get("user_id").and_then(|c| c.parse().ok());
 
-    match db::purchase_item(id, count) {
+    if user_id.is_none() {
+        return create_response(
+            StatusCode::BAD_REQUEST,
+            LocalError::UnauthenticatedUser.to_string(),
+        );
+    }
+
+    match context
+        .db
+        .purchase(id.unwrap(), count, user_id.unwrap())
+        .await
+    {
         Err(error) => create_response(StatusCode::BAD_REQUEST, error.to_string()),
-        Ok(item) => create_response(StatusCode::OK, serde_json::to_string(&item).unwrap()),
+        Ok(item) => create_response(StatusCode::OK, item.to_string()),
+    }
+}
+
+// /add_account
+pub async fn add_account(
+    body: Body,
+    context: Arc<Context>,
+) -> Result<Response<Body>, hyper::Error> {
+    let json = get_json_from_body(body).await;
+
+    if json.is_none() {
+        return create_response(StatusCode::BAD_REQUEST, LocalError::WrongParameters.to_string());
+    }
+    let json_map: Option<&serde_json::Map<String, Value>> =
+        json.as_ref().and_then(|json: &Value| json.as_object());
+
+    if json_map.is_none() {
+        return create_response(StatusCode::BAD_REQUEST, LocalError::WrongParameters.to_string());
+    }
+
+    let json_map = json_map.unwrap();
+
+    if json_map.get("username").is_none()
+        || json_map.get("full_name").is_none()
+        || json_map.get("password").is_none()
+        || json_map.get("email").is_none()
+        || json_map.get("phone").is_none()
+    {
+        return create_response(StatusCode::BAD_REQUEST, LocalError::WrongParameters.to_string());
+    }
+
+    match context.db.add_user(json.unwrap()).await {
+        Err(e) => create_response(StatusCode::BAD_REQUEST, e.to_string()),
+        Ok(id) => create_response(StatusCode::OK, id.to_string()),
     }
 }

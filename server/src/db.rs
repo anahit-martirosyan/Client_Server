@@ -1,94 +1,153 @@
-use crate::items::Item;
-use serde_json::Value;
-use std::borrow::BorrowMut;
-use std::collections::HashMap;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue, ConnectionTrait, Database, DatabaseConnection, DbErr,
+    EntityTrait, Statement,
+};
+use serde_json::{json, Value};
 
-use crate::utils;
+use crate::entities::{account, orders, product};
+use crate::utils::LocalError;
 
-static PRODUCTS_FILE: &str = "./data/products.json";
+use chrono::Utc;
 
-pub fn read_items() -> Result<HashMap<String, Item>, &'static str> {
-    let json = std::fs::read_to_string(PRODUCTS_FILE);
-    if json.is_err() {
-        return Err(utils::OPERATION_FAILED);
-    }
-    let products = serde_json::from_str::<Value>(&json.unwrap());
-    if products.is_err() {
-        return Err(utils::OPERATION_FAILED);
-    }
-    let mut items: HashMap<String, Item> = HashMap::new();
-    for item in products.unwrap().as_array().unwrap() {
-        let item: Item = item.into();
-        items.insert(item.id.to_string(), item);
-    }
-
-    Ok(items)
+trait ToError<T> {
+    fn to_local_error(self) -> Result<T, LocalError>;
 }
 
-pub fn purchase_item(id: &str, count: i64) -> Result<Item, &'static str> {
-    let mut items = read_items()?;
-
-    let item = items.get_mut(id).ok_or(utils::ID_NOT_FOUND)?;
-
-    if !item.is_available() {
-        return Err(utils::ITEM_NOT_AVAILABLE);
-    }
-    item.count -= count;
-
-    let it = (*item).clone();
-
-    match update_items(&items) {
-        Err(e) => Err(e),
-        Ok(_) => Ok(it),
+impl<T> ToError<T> for Result<T, DbErr> {
+    fn to_local_error(self) -> Result<T, LocalError> {
+        match self {
+            Ok(t) => Ok(t),
+            Err(DbErr::RecordNotFound(_)) => Err(LocalError::IdNotFound),
+            Err(DbErr::Json(_)) | Err(DbErr::Type(_)) => Err(LocalError::WrongParameters),
+            Err(_) => Err(LocalError::OperationFailed),
+        }
     }
 }
 
-pub fn get_new_id() -> Result<String, &'static str> {
-    let items = read_items()?;
-    let last_id = items
-        .keys()
-        .max()
-        .and_then(|id| id.parse::<i64>().ok())
-        .ok_or(utils::OPERATION_FAILED)?;
-
-    return Ok((last_id + 1).to_string());
+pub struct DB {
+    db: DatabaseConnection,
 }
 
-pub fn get_item(id: &str) -> Result<Item, &'static str> {
-    let items = read_items()?;
+impl DB {
+    #[tokio::main]
+    pub async fn init(db_url: &str, db_name: &str) -> Result<DB, DbErr> {
+        let statement = format!("SELECT \'CREATE DATABASE {}\' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = \'{}\')", db_name, db_name);
+        println!("{}", statement);
+        let db = Database::connect(db_url).await?;
+        db.execute(Statement::from_string(db.get_database_backend(), statement))
+            .await?;
 
-    items.get(id).cloned().ok_or(utils::ID_NOT_FOUND)
-}
+        let url = format!("{}/{}", db_url, db_name);
+        let db_con = Database::connect(&url).await?;
 
-pub fn add_item(item: Item) -> Result<(), &'static str> {
-    let mut items = read_items()?;
-    let items = items.borrow_mut();
-    items.insert(item.as_ref().id.clone(), item);
-
-    update_items(items)
-}
-
-pub fn delete_item(id: &str) -> Result<(), &'static str> {
-    let mut items = read_items()?;
-    let items = items.borrow_mut();
-
-    if items.remove(id).is_none() {
-        return Err(utils::ID_NOT_FOUND);
+        Ok(DB { db: db_con })
     }
 
-    update_items(items)
-}
+    pub async fn add_user(&self, user_json: Value) -> Result<i32, LocalError> {
+        // let username = user_json.get("username").unwrap().to_string();
+        // let full_name = user_json.get("full_name").unwrap().to_string();
+        // let password = user_json.get("password").unwrap().to_string();
+        // let email = user_json.get("email").unwrap().to_string();
+        // let phone = user_json.get("phone").unwrap().to_string();
 
-pub fn update_items(items: &HashMap<String, Item>) -> Result<(), &'static str> {
-    let items_vec: Vec<&Item> = items.values().collect();
-    if std::fs::write(
-        PRODUCTS_FILE,
-        serde_json::to_string_pretty(&items_vec).unwrap_or_default(),
-    )
-    .is_err()
-    {
-        return Err(utils::OPERATION_FAILED);
+        let new_account = account::ActiveModel::from_json(user_json).to_local_error()?;
+        //     account::ActiveModel {
+        //     username: ActiveValue::Set(username),
+        //     full_name: ActiveValue::Set(full_name),
+        //     password: ActiveValue::Set(password),
+        //     email: ActiveValue::Set(email),
+        //     phone: ActiveValue::Set(phone),
+        //     ..Default::default()
+        // };
+
+        let res = account::Entity::insert(new_account).exec(&self.db).await.to_local_error()?;
+        Ok(res.last_insert_id)
     }
 
-    Ok(())
+    pub async fn get_product(&self, product_id: i32) -> Result<Value, LocalError> {
+        let product: Option<product::Model> = product::Entity::find_by_id(product_id)
+            .one(&self.db)
+            .await
+            .to_local_error()?;
+
+        Ok(json!(product))
+    }
+
+    pub async fn get_all_products(&self) -> Result<Value, LocalError> {
+        Ok(json!(product::Entity::find()
+            .all(&self.db)
+            .await
+            .to_local_error()?))
+    }
+
+    pub async fn add_product(&self, product_json: Value) -> Result<i32, LocalError> {
+        let new_product = product::ActiveModel::from_json(product_json).to_local_error()?;
+        let res = product::Entity::insert(new_product).exec(&self.db).await.to_local_error()?;
+        Ok(res.last_insert_id)
+    }
+
+    pub async fn delete_product(&self, product_id: i32) -> Result<(), LocalError> {
+        let _ = product::Entity::delete_by_id(product_id)
+            .exec(&self.db)
+            .await.to_local_error()?;
+
+        Ok(())
+    }
+
+    pub async fn purchase(
+        &self,
+        product_id: i32,
+        count: i32,
+        user_id: i32,
+    ) -> Result<Value, LocalError> {
+        let product: Option<product::Model> = product::Entity::find_by_id(product_id)
+            .one(&self.db)
+            .await
+            .to_local_error()?;
+
+        if product.is_none() {
+            return Err(LocalError::IdNotFound);
+        }
+
+        let product = product.unwrap();
+        if !product.is_available(Some(count)) {
+            return Err(LocalError::ItemNotAvailable);
+        }
+
+        let order = orders::ActiveModel {
+            order_id: ActiveValue::NotSet,
+            user_id: ActiveValue::Set(user_id),
+            product_id: ActiveValue::Set(product.product_id),
+            date_time: ActiveValue::Set(Utc::now().naive_utc()),
+            total_price: ActiveValue::Set(product.price),
+        };
+
+        let res = orders::Entity::insert(order)
+            .exec(&self.db)
+            .await
+            .to_local_error()?;
+        let order_id = res.last_insert_id;
+
+        let product_count = product.count;
+        let mut product: product::ActiveModel = product.into();
+        product.count = ActiveValue::Set(product_count - count);
+
+        let product: Result<product::Model, LocalError> = product.update(&self.db).await.to_local_error();
+
+        match product {
+            Ok(product) => Ok(json!(product)),
+            Err(e) => {
+                let order: Result<Option<orders::Model>, LocalError> =
+                    orders::Entity::find_by_id(order_id)
+                        .one(&self.db)
+                        .await
+                        .to_local_error();
+                if order.is_err() {
+                    let _: Result<Option<orders::Model>, DbErr> =
+                        orders::Entity::find_by_id(order_id).one(&self.db).await;
+                }
+                Err(e)
+            }
+        }
+    }
 }
