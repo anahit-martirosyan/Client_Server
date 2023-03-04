@@ -1,4 +1,5 @@
 use crate::context::Context;
+use crate::utils::LocalError;
 use http::header::{CONTENT_TYPE, LOCATION};
 use http::request::Parts;
 use http::{HeaderValue, StatusCode, Uri};
@@ -6,7 +7,6 @@ use hyper::{Body, Response};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::utils::LocalError;
 
 fn create_response(status_code: StatusCode, body: String) -> Result<Response<Body>, hyper::Error> {
     Ok(Response::builder()
@@ -69,7 +69,7 @@ pub fn response_ok() -> Result<Response<Body>, hyper::Error> {
 
 // /items
 pub async fn get_items(context: Arc<Context>) -> Result<Response<Body>, hyper::Error> {
-    match context.db.get_all_products().await {
+    match context.db.postgres_db.get_all_products().await {
         Err(error) => create_response(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
         Ok(items) => create_response(StatusCode::OK, items.to_string()),
     }
@@ -91,7 +91,7 @@ pub async fn get_item(
         return create_response(StatusCode::BAD_REQUEST, LocalError::IdNotFound.to_string());
     }
 
-    match context.db.get_product(id.unwrap()).await {
+    match context.db.postgres_db.get_product(id.unwrap()).await {
         Err(error) => {
             let status_code = if error == LocalError::IdNotFound {
                 StatusCode::BAD_REQUEST
@@ -113,7 +113,10 @@ pub async fn add_item(body: Body, context: Arc<Context>) -> Result<Response<Body
         .and_then(|json: &mut Value| json.as_object_mut());
 
     if json_map.is_none() {
-        return create_response(StatusCode::BAD_REQUEST, LocalError::WrongParameters.to_string());
+        return create_response(
+            StatusCode::BAD_REQUEST,
+            LocalError::WrongParameters.to_string(),
+        );
     }
 
     let json_map = json_map.unwrap();
@@ -122,12 +125,15 @@ pub async fn add_item(body: Body, context: Arc<Context>) -> Result<Response<Body
         || json_map.get("price").is_none()
         || json_map.get("category").is_none()
     {
-        return create_response(StatusCode::BAD_REQUEST, LocalError::WrongParameters.to_string());
+        return create_response(
+            StatusCode::BAD_REQUEST,
+            LocalError::WrongParameters.to_string(),
+        );
     }
 
     json_map.entry("count").or_insert(json!(0));
 
-    match context.db.add_product(json!(json_map)).await {
+    match context.db.postgres_db.add_product(json!(json_map)).await {
         Err(e) => create_response(StatusCode::BAD_REQUEST, e.to_string()),
         Ok(id) => create_response(StatusCode::OK, id.to_string()),
     }
@@ -148,7 +154,7 @@ pub async fn delete_item(
         return create_response(StatusCode::BAD_REQUEST, LocalError::IdNotFound.to_string());
     }
 
-    match context.db.delete_product(id.unwrap()).await {
+    match context.db.postgres_db.delete_product(id.unwrap()).await {
         Err(error) => {
             create_response(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
             // TODO check error types
@@ -186,6 +192,7 @@ pub async fn buy_item(
 
     match context
         .db
+        .postgres_db
         .purchase(id.unwrap(), count, user_id.unwrap())
         .await
     {
@@ -202,13 +209,19 @@ pub async fn add_account(
     let json = get_json_from_body(body).await;
 
     if json.is_none() {
-        return create_response(StatusCode::BAD_REQUEST, LocalError::WrongParameters.to_string());
+        return create_response(
+            StatusCode::BAD_REQUEST,
+            LocalError::WrongParameters.to_string(),
+        );
     }
     let json_map: Option<&serde_json::Map<String, Value>> =
         json.as_ref().and_then(|json: &Value| json.as_object());
 
     if json_map.is_none() {
-        return create_response(StatusCode::BAD_REQUEST, LocalError::WrongParameters.to_string());
+        return create_response(
+            StatusCode::BAD_REQUEST,
+            LocalError::WrongParameters.to_string(),
+        );
     }
 
     let json_map = json_map.unwrap();
@@ -219,11 +232,62 @@ pub async fn add_account(
         || json_map.get("email").is_none()
         || json_map.get("phone").is_none()
     {
-        return create_response(StatusCode::BAD_REQUEST, LocalError::WrongParameters.to_string());
+        return create_response(
+            StatusCode::BAD_REQUEST,
+            LocalError::WrongParameters.to_string(),
+        );
     }
 
-    match context.db.add_user(json.unwrap()).await {
+    match context.db.postgres_db.add_user(json.unwrap()).await {
         Err(e) => create_response(StatusCode::BAD_REQUEST, e.to_string()),
-        Ok(id) => create_response(StatusCode::OK, id.to_string()),
+        Ok(id) => {
+            let res = context.db.mongo_db.add_user(id).await;
+            if res.is_err() {
+                let _ = context.db.mongo_db.add_user(id).await;
+            }
+
+            create_response(StatusCode::OK, id.to_string())
+        }
+    }
+}
+
+pub async fn login(body: Body, context: Arc<Context>) -> Result<Response<Body>, hyper::Error> {
+    let json = get_json_from_body(body).await;
+
+    if json.is_none() {
+        return create_response(
+            StatusCode::BAD_REQUEST,
+            LocalError::WrongParameters.to_string(),
+        );
+    }
+    let json_map: Option<&serde_json::Map<String, Value>> =
+        json.as_ref().and_then(|json: &Value| json.as_object());
+
+    if json_map.is_none() {
+        return create_response(
+            StatusCode::BAD_REQUEST,
+            LocalError::WrongParameters.to_string(),
+        );
+    }
+
+    let json_map = json_map.unwrap();
+
+    if json_map.get("username").is_none() || json_map.get("password").is_none() {
+        return create_response(
+            StatusCode::BAD_REQUEST,
+            LocalError::WrongParameters.to_string(),
+        );
+    }
+
+    match context.db.postgres_db.login(json.unwrap()).await {
+        Err(e) => create_response(StatusCode::BAD_REQUEST, e.to_string()),
+        Ok(id) => {
+            let res = context.db.mongo_db.record_logged_in(id).await;
+            if res.is_err() {
+                let _ = context.db.mongo_db.record_logged_in(id).await;
+            }
+
+            create_response(StatusCode::OK, id.to_string())
+        }
     }
 }

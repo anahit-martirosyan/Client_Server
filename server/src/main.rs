@@ -34,7 +34,8 @@ async fn route_service(
         (&Method::OPTIONS, "/purchase") => handlers::response_ok(),
         (&Method::PUT, "/purchase") => handlers::buy_item(&parts, context).await,
         (&Method::POST, "/add_account") => handlers::add_account(body, context).await,
-
+        (&Method::PUT, "/login") => handlers::login(body, context).await,
+        // (&Method::PUT, "/logout") => handlers::logout(body, context).await,
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body(Body::empty())
@@ -69,16 +70,18 @@ pub async fn run_server(settings: &Settings, context: Arc<Context>) {
 
 fn main() {
     let settings = Settings::new("../config/config.yml");
-    let db_url = settings.get("database", "url");
-    let db_name = settings.get("database", "name");
+    let postgres_url = settings.get("postgres", "uri");
+    let postgres_name = settings.get("postgres", "name");
+    let mongodb_uri = settings.get("mongodb", "uri");
+    let mongodb_name = settings.get("mongodb", "name");
     let context;
-    match db::DB::init(&db_url, &db_name) {
-        Err(e) => {
-            println!("Error when initializing database: {}", e);
+    match db::DB::init(&postgres_url, &postgres_name, &mongodb_uri, &mongodb_name) {
+        None => {
+            println!("Error when initializing database");
             return;
         }
-        Ok(db) => {
-            println!("Databse initialized: {}", db_name);
+        Some(db) => {
+            println!("Database initialized: {}", postgres_name);
             context = Arc::new(Context { db });
         }
     };

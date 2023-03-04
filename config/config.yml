@@ -1,6 +1,10 @@
 network:
   listen_on:  "127.0.0.1:8080"
 
-database:
-  url: "postgres://dboperator:operatorpass123@localhost:5243"
+postgres:
+  uri: "postgres://dboperator:operatorpass123@localhost:5243"
   name: "online_shop"
+
+mongodb:
+  uri: "mongodb://localhost:27017"
+  name: "user_session"

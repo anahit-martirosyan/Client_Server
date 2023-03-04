@@ -8,3 +8,19 @@ services:
       - POSTGRES_DB=dboperator
     ports:
       - "5243:5432"
+    volumes:
+      - postgres_data_container:/data/postgres
+
+  mongodb_container:
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+    ports:
+      - 27017:27017
+    volumes:
+      - mongodb_data_container:/data/mongodbdb
+
+volumes:
+  postgres_data_container:
+  mongodb_data_container:
