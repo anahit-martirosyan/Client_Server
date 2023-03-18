@@ -1,0 +1,10 @@
+network:
+  listen_on:  "172.17.0.4:8080"
+
+postgres:
+  uri: "postgres://dboperator:operatorpass123@172.17.0.3:5432"
+  name: "online_shop"
+
+mongodb:
+  uri: "mongodb://172.17.0.2:27017"
+  name: "user_session"

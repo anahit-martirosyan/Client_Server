@@ -6,16 +6,20 @@ services:
       - POSTGRES_USER=dboperator
       - POSTGRES_PASSWORD=operatorpass123
       - POSTGRES_DB=dboperator
+    networks:
+      - bridge
     ports:
       - "5243:5432"
     volumes:
       - postgres_data_container:/data/postgres
 
-  mongodb_container:
+  mongodb:
     image: mongo:latest
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: rootpassword
+    networks:
+      - bridge
     ports:
       - 27017:27017
     volumes:
@@ -24,3 +28,8 @@ services:
 volumes:
   postgres_data_container:
   mongodb_data_container:
+
+networks:
+  bridge:
+    # Use a custom driver
+    driver: custom-driver-1

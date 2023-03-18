@@ -1,6 +1,6 @@
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, ColumnTrait, ConnectionTrait, Database, DatabaseConnection,
-    DbErr, EntityTrait, QueryFilter, Statement,
+    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection,
+    DbErr, EntityTrait, QueryFilter,
 };
 use serde_json::{json, Value};
 
@@ -8,8 +8,7 @@ use crate::entities::{account, orders, product};
 use crate::utils::LocalError;
 
 use chrono::Utc;
-use mongodb::bson::{doc, Document};
-use mongodb::{error::Result as MongoResult, Client, Database as MongoDatabase};
+
 
 trait ToError<T> {
     fn to_local_error(self, record_type: RecordType) -> Result<T, LocalError>;
@@ -25,23 +24,29 @@ impl<T> ToError<T> for Result<T, DbErr> {
     fn to_local_error(self, record_type: RecordType) -> Result<T, LocalError> {
         match self {
             Ok(t) => Ok(t),
-            Err(DbErr::RecordNotFound(_)) => match record_type {
-                RecordType::Product | RecordType::Order => Err(LocalError::IdNotFound),
-                RecordType::User => Err(LocalError::WrongUserOrPassword),
+            Err(DbErr::RecordNotFound(e)) =>{
+                println!("{}", e);
+                match record_type {
+                    RecordType::Product | RecordType::Order => Err(LocalError::IdNotFound),
+                    RecordType::User => Err(LocalError::WrongUserOrPassword),
+                }
             },
-            Err(DbErr::Json(_)) | Err(DbErr::Type(_)) => Err(LocalError::WrongParameters),
-            Err(_) => Err(LocalError::OperationFailed),
+            Err(DbErr::Json(e)) | Err(DbErr::Type(e)) => {
+                println!("{}", e);
+                Err(LocalError::WrongParameters)
+            },
+            Err(e) => {
+                println!("{}", e);
+                Err(LocalError::OperationFailed)
+            },
         }
     }
 }
 
-pub struct DB {
-    pub postgres_db: PostgresDB,
-    pub mongo_db: MongoDB,
-}
+
 
 pub struct PostgresDB {
-    db: DatabaseConnection,
+    pub db: DatabaseConnection,
 }
 
 impl PostgresDB {
@@ -107,10 +112,17 @@ impl PostgresDB {
     }
 
     pub async fn get_all_products(&self) -> Result<Value, LocalError> {
-        Ok(json!(product::Entity::find()
+        let mut products =
+        product::Entity::find()
             .all(&self.db)
             .await
-            .to_local_error(RecordType::Product)?))
+            .to_local_error(RecordType::Product)?;
+
+        for mut prod in products.iter_mut() {
+            prod.status = prod.count > 0;
+        }
+
+        Ok(json!(products))
     }
 
     pub async fn add_product(&self, product_json: Value) -> Result<i32, LocalError> {
@@ -193,77 +205,5 @@ impl PostgresDB {
     }
 }
 
-pub struct MongoDB {
-    db: MongoDatabase,
-}
 
-impl MongoDB {
-    pub async fn add_user(&self, user_id: i32) -> MongoResult<()> {
-        let collection = self.db.collection::<Document>("records");
 
-        let record = doc! {"user_id": user_id, "account_created": Utc::now().to_string()};
-
-        collection
-            .insert_one(record, None)
-            .await
-            .and_then(|_| Ok(()))
-    }
-
-    pub async fn record_logged_in(&self, user_id: i32) -> Result<(), mongodb::error::Error> {
-        let filter = doc! { "user_id": user_id };
-        let collection = self.db.collection::<Document>("records");
-        let update = doc! {"$set": {"last_logged_in": Utc::now().to_string()}};
-        let res = collection
-            .update_one(filter.clone(), update.clone(), None)
-            .await?;
-        if res.matched_count == 0 {
-            let _ = self.add_user(user_id);
-            let _ = collection.update_one(filter, update, None).await?;
-        }
-
-        Ok(())
-    }
-}
-
-impl DB {
-    #[tokio::main]
-    pub async fn init(
-        postgres_uri: &str,
-        postgres_name: &str,
-        mongo_uri: &str,
-        mongo_name: &str,
-    ) -> Option<DB> {
-        let postgres = DB::init_postgres(postgres_uri, postgres_name).await;
-        let mongo = DB::init_mongo(mongo_uri, mongo_name).await;
-
-        if postgres.is_err() || mongo.is_err() {
-            return None;
-        }
-
-        Some(DB {
-            postgres_db: PostgresDB {
-                db: postgres.unwrap(),
-            },
-            mongo_db: MongoDB { db: mongo.unwrap() },
-        })
-    }
-
-    async fn init_postgres(uri: &str, name: &str) -> Result<DatabaseConnection, DbErr> {
-        let statement = format!("SELECT \'CREATE DATABASE {}\' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = \'{}\')", name, name);
-        println!("{}", statement);
-        let db = Database::connect(uri).await?;
-        db.execute(Statement::from_string(db.get_database_backend(), statement))
-            .await?;
-
-        let uri = format!("{}/{}", uri, name);
-        let db_con = Database::connect(&uri).await?;
-
-        Ok(db_con)
-    }
-
-    async fn init_mongo(uri: &str, name: &str) -> MongoResult<MongoDatabase> {
-        let client = Client::with_uri_str(uri).await?;
-
-        Ok(client.database(name))
-    }
-}

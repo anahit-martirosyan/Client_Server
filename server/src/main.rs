@@ -69,7 +69,7 @@ pub async fn run_server(settings: &Settings, context: Arc<Context>) {
 }
 
 fn main() {
-    let settings = Settings::new("../config/config.yml");
+    let settings = Settings::new("./config/config.yml");
     let postgres_url = settings.get("postgres", "uri");
     let postgres_name = settings.get("postgres", "name");
     let mongodb_uri = settings.get("mongodb", "uri");

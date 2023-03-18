@@ -57,6 +57,8 @@ async fn get_json_from_body(body: Body) -> Option<Value> {
     json
 }
 
+// fn check_and_add_availability()
+
 //
 pub fn items_redirect(addr: String) -> Result<Response<Body>, hyper::Error> {
     create_redirect_response(StatusCode::PERMANENT_REDIRECT, addr)
@@ -134,7 +136,11 @@ pub async fn add_item(body: Body, context: Arc<Context>) -> Result<Response<Body
     json_map.entry("count").or_insert(json!(0));
 
     match context.db.postgres_db.add_product(json!(json_map)).await {
-        Err(e) => create_response(StatusCode::BAD_REQUEST, e.to_string()),
+        Err(e) => {
+            println!("{}", e.to_string());
+            create_response(StatusCode::BAD_REQUEST, e.to_string())
+
+        },
         Ok(id) => create_response(StatusCode::OK, id.to_string()),
     }
 }
@@ -183,17 +189,18 @@ pub async fn buy_item(
         .unwrap_or(1);
     let user_id: Option<i32> = params.get("user_id").and_then(|c| c.parse().ok());
 
-    if user_id.is_none() {
-        return create_response(
-            StatusCode::BAD_REQUEST,
-            LocalError::UnauthenticatedUser.to_string(),
-        );
-    }
+    // if user_id.is_none() {
+    //     return create_response(
+    //         StatusCode::BAD_REQUEST,
+    //         LocalError::UnauthenticatedUser.to_string(),
+    //     );
+    // }
 
     match context
         .db
         .postgres_db
-        .purchase(id.unwrap(), count, user_id.unwrap())
+        .purchase(id.unwrap(), count, user_id.unwrap_or(1)
+        )
         .await
     {
         Err(error) => create_response(StatusCode::BAD_REQUEST, error.to_string()),

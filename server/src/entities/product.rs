@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 #[sea_orm(table_name = "product")]
 pub struct Model {
     #[sea_orm(primary_key)]
+    #[serde(skip_deserializing)]
+    #[serde(rename = "id")]
     pub product_id: i32,
     #[sea_orm(unique)]
     pub name: String,
@@ -14,6 +16,9 @@ pub struct Model {
     pub count: i32,
     pub price: Decimal,
     pub category: String,
+    #[sea_orm(ignore)]
+    #[sea_orm(skip)]
+    pub status: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
