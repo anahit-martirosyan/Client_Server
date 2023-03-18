@@ -1,5 +1,5 @@
 use crate::context::Context;
-use crate::utils::LocalError;
+use crate::utils::{LocalError, get_json_from_body};
 use http::header::{CONTENT_TYPE, LOCATION};
 use http::request::Parts;
 use http::{HeaderValue, StatusCode, Uri};
@@ -49,13 +49,6 @@ fn get_params(uri: &Uri) -> HashMap<String, String> {
         .unwrap_or_else(HashMap::new)
 }
 
-async fn get_json_from_body(body: Body) -> Option<Value> {
-    let body_bytes = hyper::body::to_bytes(body).await.ok()?;
-
-    let json: Option<Value> = serde_json::from_slice(&body_bytes).ok();
-
-    json
-}
 
 // fn check_and_add_availability()
 
@@ -107,10 +100,8 @@ pub async fn get_item(
 }
 
 // /add_item
-pub async fn add_item(body: Body, context: Arc<Context>) -> Result<Response<Body>, hyper::Error> {
-    let mut json = get_json_from_body(body).await;
-
-    let json_map: Option<&mut serde_json::Map<String, Value>> = json
+pub async fn add_item(mut body: Option<Value>, context: Arc<Context>) -> Result<Response<Body>, hyper::Error> {
+    let json_map: Option<&mut serde_json::Map<String, Value>> = body
         .as_mut()
         .and_then(|json: &mut Value| json.as_object_mut());
 
@@ -210,19 +201,17 @@ pub async fn buy_item(
 
 // /add_account
 pub async fn add_account(
-    body: Body,
+    body: Option<Value>,
     context: Arc<Context>,
 ) -> Result<Response<Body>, hyper::Error> {
-    let json = get_json_from_body(body).await;
-
-    if json.is_none() {
+    if body.is_none() {
         return create_response(
             StatusCode::BAD_REQUEST,
             LocalError::WrongParameters.to_string(),
         );
     }
     let json_map: Option<&serde_json::Map<String, Value>> =
-        json.as_ref().and_then(|json: &Value| json.as_object());
+        body.as_ref().and_then(|json: &Value| json.as_object());
 
     if json_map.is_none() {
         return create_response(
@@ -245,7 +234,7 @@ pub async fn add_account(
         );
     }
 
-    match context.db.postgres_db.add_user(json.unwrap()).await {
+    match context.db.postgres_db.add_user(body.unwrap()).await {
         Err(e) => create_response(StatusCode::BAD_REQUEST, e.to_string()),
         Ok(id) => {
             let res = context.db.mongo_db.add_user(id).await;
@@ -258,17 +247,15 @@ pub async fn add_account(
     }
 }
 
-pub async fn login(body: Body, context: Arc<Context>) -> Result<Response<Body>, hyper::Error> {
-    let json = get_json_from_body(body).await;
-
-    if json.is_none() {
+pub async fn login(body: Option<Value>, context: Arc<Context>) -> Result<Response<Body>, hyper::Error> {
+    if body.is_none() {
         return create_response(
             StatusCode::BAD_REQUEST,
             LocalError::WrongParameters.to_string(),
         );
     }
     let json_map: Option<&serde_json::Map<String, Value>> =
-        json.as_ref().and_then(|json: &Value| json.as_object());
+        body.as_ref().and_then(|json: &Value| json.as_object());
 
     if json_map.is_none() {
         return create_response(
@@ -286,7 +273,7 @@ pub async fn login(body: Body, context: Arc<Context>) -> Result<Response<Body>, 
         );
     }
 
-    match context.db.postgres_db.login(json.unwrap()).await {
+    match context.db.postgres_db.login(body.unwrap()).await {
         Err(e) => create_response(StatusCode::BAD_REQUEST, e.to_string()),
         Ok(id) => {
             let res = context.db.mongo_db.record_logged_in(id).await;

@@ -1,5 +1,5 @@
 network:
-  listen_on:  "172.17.0.4:8080"
+  listen_on:  "0.0.0.0:8080"
 
 postgres:
   uri: "postgres://dboperator:operatorpass123@172.17.0.3:5432"
@@ -8,3 +8,14 @@ postgres:
 mongodb:
   uri: "mongodb://172.17.0.2:27017"
   name: "user_session"
+
+#network:
+#  listen_on:  "0.0.0.0:8080"
+#
+#postgres:
+#  uri: "postgres://dboperator:operatorpass123@localhost:5243"
+#  name: "online_shop"
+#
+#mongodb:
+#  uri: "mongodb://localhost:27017"
+#  name: "user_session"

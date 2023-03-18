@@ -1,7 +1,7 @@
 use chrono::Utc;
+use local_ip_address::local_ip;
 use mongodb::bson::{doc, Document};
 use mongodb::{error::Result as MongoResult, Database as MongoDatabase};
-
 
 pub struct MongoDB {
     pub db: MongoDatabase,
@@ -32,5 +32,17 @@ impl MongoDB {
         }
 
         Ok(())
+    }
+
+    pub async fn log_request(&self, uri: &str, body: serde_json::Value) -> MongoResult<()> {
+        let collection = self.db.collection::<Document>("logging");
+
+        let local_ip = local_ip().unwrap();
+        let record = doc! {"host": local_ip.to_string(), "uri": uri, "request_body": body.to_string()};
+
+        collection
+            .insert_one(record, None)
+            .await
+            .and_then(|_| Ok(()))
     }
 }

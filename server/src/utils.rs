@@ -1,3 +1,6 @@
+use hyper::Body;
+use serde_json::Value;
+
 #[derive(PartialEq)]
 pub enum LocalError {
     IdNotSent,
@@ -21,4 +24,13 @@ impl LocalError {
             LocalError::WrongUserOrPassword => "Wrong user or password".to_string(),
         }
     }
+}
+
+
+pub async fn get_json_from_body(body: Body) -> Option<Value> {
+    let body_bytes = hyper::body::to_bytes(body).await.ok()?;
+
+    let json: Option<Value> = serde_json::from_slice(&body_bytes).ok();
+
+    json
 }

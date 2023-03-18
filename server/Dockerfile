@@ -15,6 +15,4 @@ COPY ./config ./config
 RUN rm ./target/release/deps/server*
 RUN cargo install --path .
 
-EXPOSE 8080
-
 CMD ["server"]

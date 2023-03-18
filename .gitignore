@@ -1,4 +1,5 @@
 target
 .idea
 /server/.idea
+/server/Cargo.lock
 /client/.idea

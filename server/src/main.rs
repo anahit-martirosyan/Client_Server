@@ -2,6 +2,7 @@ extern crate core;
 
 use crate::context::Context;
 use crate::settings::Settings;
+use crate::utils::get_json_from_body;
 use http::{Method, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{http, Body, Request, Response, Server};
@@ -24,17 +25,23 @@ async fn route_service(
 
     println!("method: {}, uri: {}", &parts.method, parts.uri.path());
 
+
+    let mut body_json = get_json_from_body(body).await;
+    if parts.method != Method::OPTIONS && body_json.is_some() {
+        context.db.mongo_db.log_request(parts.uri.path(), body_json.as_ref().unwrap().clone());
+    }
+
     match (&parts.method, parts.uri.path()) {
         (&Method::GET, "/") => handlers::items_redirect(addr),
         (&Method::GET, "/items") => handlers::get_items(context).await,
         (&Method::GET, "/item") => handlers::get_item(&parts, context).await,
-        (&Method::POST, "/add_item") => handlers::add_item(body, context).await,
+        (&Method::POST, "/add_item") => handlers::add_item(body_json, context).await,
         (&Method::OPTIONS, "/add_item") => handlers::response_ok(),
         (&Method::DELETE, "/delete") => handlers::delete_item(&parts, context).await,
         (&Method::OPTIONS, "/purchase") => handlers::response_ok(),
         (&Method::PUT, "/purchase") => handlers::buy_item(&parts, context).await,
-        (&Method::POST, "/add_account") => handlers::add_account(body, context).await,
-        (&Method::PUT, "/login") => handlers::login(body, context).await,
+        (&Method::POST, "/add_account") => handlers::add_account(body_json, context).await,
+        (&Method::PUT, "/login") => handlers::login(body_json, context).await,
         // (&Method::PUT, "/logout") => handlers::logout(body, context).await,
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
