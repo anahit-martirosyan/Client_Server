@@ -1,5 +1,5 @@
 use crate::context::Context;
-use crate::utils::{LocalError, get_json_from_body};
+use crate::utils::LocalError;
 use http::header::{CONTENT_TYPE, LOCATION};
 use http::request::Parts;
 use http::{HeaderValue, StatusCode, Uri};
@@ -49,6 +49,20 @@ fn get_params(uri: &Uri) -> HashMap<String, String> {
         .unwrap_or_else(HashMap::new)
 }
 
+fn get_id_from_uri(uri: &Uri) -> Result<i32, LocalError> {
+    let params = get_params(uri);
+    let id = params.get("id");
+    if id.is_none() {
+        return Err(LocalError::IdNotSent);
+    }
+
+    let id = id.unwrap().parse::<i32>();
+    if id.is_err() {
+        return Err(LocalError::IdNotFound);
+    }
+
+    Ok(id.unwrap())
+}
 
 // fn check_and_add_availability()
 
@@ -75,18 +89,21 @@ pub async fn get_item(
     parts: &Parts,
     context: Arc<Context>,
 ) -> Result<Response<Body>, hyper::Error> {
-    let params = get_params(&parts.uri);
-    let id = params.get("id");
-    if id.is_none() {
-        return create_response(StatusCode::BAD_REQUEST, LocalError::IdNotSent.to_string());
+    let id = get_id_from_uri(&parts.uri);
+
+    if let Err(e) = id {
+        return create_response(StatusCode::BAD_REQUEST, e.to_string());
     }
 
-    let id = id.unwrap().parse::<i32>();
-    if id.is_err() {
-        return create_response(StatusCode::BAD_REQUEST, LocalError::IdNotFound.to_string());
+    let id = id.ok().unwrap();
+
+    let res = context.cache.get_product(id);
+
+    if let Some(item) = res {
+        return create_response(StatusCode::OK, item.to_string());
     }
 
-    match context.db.postgres_db.get_product(id.unwrap()).await {
+    match context.db.postgres_db.get_product(id).await {
         Err(error) => {
             let status_code = if error == LocalError::IdNotFound {
                 StatusCode::BAD_REQUEST
@@ -95,7 +112,10 @@ pub async fn get_item(
             };
             create_response(status_code, error.to_string())
         }
-        Ok(item) => create_response(StatusCode::OK, item.to_string()),
+        Ok(item) => {
+            let _ = context.cache.add_product(id, item.clone());
+            create_response(StatusCode::OK, item.to_string())
+        },
     }
 }
 
@@ -136,27 +156,76 @@ pub async fn add_item(mut body: Option<Value>, context: Arc<Context>) -> Result<
     }
 }
 
+// /update_item
+pub async fn update_item(parts: &Parts, mut body: Option<Value>, context: Arc<Context>) -> Result<Response<Body>, hyper::Error> {
+    let id = get_id_from_uri(&parts.uri);
+
+    if let Err(e) = id {
+        return create_response(StatusCode::BAD_REQUEST, e.to_string());
+    }
+
+    let id = id.ok().unwrap();
+
+    let json_map: Option<&mut serde_json::Map<String, Value>> = body
+        .as_mut()
+        .and_then(|json: &mut Value| json.as_object_mut());
+
+
+    if json_map.is_none() {
+        return create_response(
+            StatusCode::BAD_REQUEST,
+            LocalError::WrongParameters.to_string(),
+        );
+    }
+
+    let json_map = json_map.unwrap();
+
+    let updates = json!(json_map);
+    match context.db.postgres_db.update_product(id, updates.clone()).await {
+        Err(e) => {
+            println!("{}", e.to_string());
+            create_response(StatusCode::BAD_REQUEST, e.to_string())
+
+        },
+        Ok(item) => {
+            let res = context.cache.update_product(id.clone(), updates);
+            if res.is_err() {
+                let res = context.cache.delete_product(id.clone());
+                if res.is_err() {
+                    let _ = context.cache.delete_product(id);
+                }
+            }
+            create_response(StatusCode::OK, item.to_string())
+        },
+    }
+}
+
+
 // /delete
 pub async fn delete_item(
     parts: &Parts,
     context: Arc<Context>,
 ) -> Result<Response<Body>, hyper::Error> {
-    let params = get_params(&parts.uri);
-    let id = params.get("id");
-    if id.is_none() {
-        return create_response(StatusCode::BAD_REQUEST, LocalError::IdNotSent.to_string());
-    }
-    let id = id.unwrap().parse::<i32>();
-    if id.is_err() {
-        return create_response(StatusCode::BAD_REQUEST, LocalError::IdNotFound.to_string());
+    let id = get_id_from_uri(&parts.uri);
+
+    if let Err(e) = id {
+        return create_response(StatusCode::BAD_REQUEST, e.to_string());
     }
 
-    match context.db.postgres_db.delete_product(id.unwrap()).await {
+    let id = id.ok().unwrap();
+
+    match context.db.postgres_db.delete_product(id.clone()).await {
         Err(error) => {
             create_response(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
             // TODO check error types
         }
-        Ok(_) => create_response(StatusCode::OK, String::new()),
+        Ok(_) => {
+            let res = context.cache.delete_product(id.clone());
+            if res.is_err() {
+                let _ = context.cache.delete_product(id.clone());
+            }
+            create_response(StatusCode::OK, String::new())
+        },
     }
 }
 
@@ -165,15 +234,15 @@ pub async fn buy_item(
     parts: &Parts,
     context: Arc<Context>,
 ) -> Result<Response<Body>, hyper::Error> {
+    let id = get_id_from_uri(&parts.uri);
+
+    if let Err(e) = id {
+        return create_response(StatusCode::BAD_REQUEST, e.to_string());
+    }
+
+    let id = id.ok().unwrap();
+
     let params = get_params(&parts.uri);
-    let id = params.get("id");
-    if id.is_none() {
-        return create_response(StatusCode::BAD_REQUEST, LocalError::IdNotSent.to_string());
-    }
-    let id = id.unwrap().parse::<i32>();
-    if id.is_err() {
-        return create_response(StatusCode::BAD_REQUEST, LocalError::IdNotFound.to_string());
-    }
     let count: i32 = params
         .get("count")
         .and_then(|c| c.parse().ok())
@@ -190,7 +259,7 @@ pub async fn buy_item(
     match context
         .db
         .postgres_db
-        .purchase(id.unwrap(), count, user_id.unwrap_or(1)
+        .purchase(id, count, user_id.unwrap_or(1)
         )
         .await
     {

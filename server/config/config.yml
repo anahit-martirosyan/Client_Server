@@ -9,6 +9,10 @@ mongodb:
   uri: "mongodb://172.17.0.2:27017"
   name: "user_session"
 
+redis:
+  uri: "redis://172.17.0.5:6379"
+
+
 #network:
 #  listen_on:  "0.0.0.0:8080"
 #
@@ -19,3 +23,6 @@ mongodb:
 #mongodb:
 #  uri: "mongodb://localhost:27017"
 #  name: "user_session"
+#
+#redis:
+#  uri: "redis://127.0.0.1:6378"

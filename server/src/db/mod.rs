@@ -1,5 +1,5 @@
 use mongodb::{error::Result as MongoResult, Client, Database as MongoDatabase};
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbErr, Statement};
+use sea_orm::{Database, DatabaseConnection, DbErr};
 use crate::db::mongo::MongoDB;
 use crate::db::postgres::PostgresDB;
 

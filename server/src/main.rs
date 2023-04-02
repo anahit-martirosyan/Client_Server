@@ -8,7 +8,9 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::{http, Body, Request, Response, Server};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use crate::cache::redis_cache;
 
+mod cache;
 mod context;
 mod db;
 mod entities;
@@ -26,9 +28,9 @@ async fn route_service(
     println!("method: {}, uri: {}", &parts.method, parts.uri.path());
 
 
-    let mut body_json = get_json_from_body(body).await;
+    let body_json = get_json_from_body(body).await;
     if parts.method != Method::OPTIONS && body_json.is_some() {
-        context.db.mongo_db.log_request(parts.uri.path(), body_json.as_ref().unwrap().clone());
+        let _ = context.db.mongo_db.log_request(parts.uri.path(), body_json.as_ref().unwrap().clone());
     }
 
     match (&parts.method, parts.uri.path()) {
@@ -37,6 +39,7 @@ async fn route_service(
         (&Method::GET, "/item") => handlers::get_item(&parts, context).await,
         (&Method::POST, "/add_item") => handlers::add_item(body_json, context).await,
         (&Method::OPTIONS, "/add_item") => handlers::response_ok(),
+        (&Method::PUT, "/update_item") => handlers::update_item(&parts, body_json, context).await,
         (&Method::DELETE, "/delete") => handlers::delete_item(&parts, context).await,
         (&Method::OPTIONS, "/purchase") => handlers::response_ok(),
         (&Method::PUT, "/purchase") => handlers::buy_item(&parts, context).await,
@@ -81,6 +84,8 @@ fn main() {
     let postgres_name = settings.get("postgres", "name");
     let mongodb_uri = settings.get("mongodb", "uri");
     let mongodb_name = settings.get("mongodb", "name");
+    let redis_uri = settings.get("redis", "uri");
+
     let context;
     match db::DB::init(&postgres_url, &postgres_name, &mongodb_uri, &mongodb_name) {
         None => {
@@ -89,7 +94,18 @@ fn main() {
         }
         Some(db) => {
             println!("Database initialized: {}", postgres_name);
-            context = Arc::new(Context { db });
+
+            let cache = redis_cache::Cache::init(redis_uri);
+            if cache.is_err() {
+                println!("Error when initializing cache");
+                return;
+            }
+            println!("Cache initialized");
+
+            context = Arc::new(Context {
+                db,
+                cache: cache.unwrap(),
+            });
         }
     };
 

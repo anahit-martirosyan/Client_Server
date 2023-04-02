@@ -1,13 +1,14 @@
 use sea_orm::{
     ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection,
-    DbErr, EntityTrait, QueryFilter,
+    DbErr, EntityTrait, QueryFilter, entity::*
 };
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::entities::{account, orders, product};
-use crate::utils::LocalError;
+use crate::utils::{LocalError, round};
 
 use chrono::Utc;
+use sea_orm::prelude::Decimal;
 
 
 trait ToError<T> {
@@ -135,7 +136,71 @@ impl PostgresDB {
         Ok(res.last_insert_id)
     }
 
-    pub async fn delete_product(&self, product_id: i32) -> Result<(), LocalError> {
+    pub async fn update_product(&self, product_id: i32, updates: Value) -> Result<Value, LocalError> {
+        let product: Option<product::Model> = product::Entity::find_by_id(product_id)
+            .one(&self.db)
+            .await
+            .to_local_error(RecordType::Product)?;
+
+        if product.is_none() {
+            return Err(LocalError::OperationFailed);
+        }
+
+        let mut product: product::ActiveModel = product.unwrap().into();
+
+        let updates: Map<String, Value> = updates.as_object().unwrap().clone();
+        for (key, val) in updates.iter() {
+            match key.as_str() {
+                "name" => {
+                    let name = val.as_str();
+                    if name.is_none() {
+                        return Err(LocalError::WrongParameters);
+                    }
+                    product.name = Set(name.unwrap().to_string());
+                },
+                "image" => {
+                    let image = val.as_str();
+                    if image.is_none() {
+                        return Err(LocalError::WrongParameters);
+                    }
+                    product.image = Set(Some(image.unwrap().to_string()));
+                },
+                "count" => {
+                    let count = val.as_i64();
+                    if count.is_none() {
+                        return Err(LocalError::WrongParameters);
+                    }
+                    product.count = Set(count.unwrap() as i32);
+                },
+                "price" => {
+                    let price = val.as_f64();
+                    if price.is_none() {
+                        return Err(LocalError::WrongParameters);
+                    }
+                    let price = Decimal::from_str_exact( &round(price.unwrap(), 2).to_string());
+                    if price.is_err() {
+                        return Err(LocalError::WrongParameters);
+                    }
+                    product.price = Set(price.unwrap());
+                },
+                "category" => {
+                    let category = val.as_str();
+                    if category.is_none() {
+                        return Err(LocalError::WrongParameters);
+                    }
+                    product.category = Set(category.unwrap().to_string());
+                },
+                _ => {}
+            }
+        }
+
+        let product: product::Model = product.update(&self.db).await.to_local_error(RecordType::Product)?;
+
+        Ok(json!(product))
+    }
+
+
+        pub async fn delete_product(&self, product_id: i32) -> Result<(), LocalError> {
         let _ = product::Entity::delete_by_id(product_id)
             .exec(&self.db)
             .await
