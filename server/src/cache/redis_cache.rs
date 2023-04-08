@@ -18,7 +18,6 @@ impl Cache {
         })
     }
 
-
     fn add_product_inner(&self, product_id: i32, product: &Map<String, Value>) -> Result<(), ()> {
         let conn = self.redis_client.get_connection();
         if conn.is_err() {
@@ -103,7 +102,7 @@ impl Cache {
 
         let mut conn = conn.unwrap();
 
-        let res: RedisResult<()>  = conn.del(get_product_key(id));
+        let res: RedisResult<()> = conn.del(get_product_key(id));
 
         if res.is_err() {
             Err(())

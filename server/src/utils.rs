@@ -26,7 +26,6 @@ impl LocalError {
     }
 }
 
-
 pub async fn get_json_from_body(body: Body) -> Option<Value> {
     let body_bytes = hyper::body::to_bytes(body).await.ok()?;
 

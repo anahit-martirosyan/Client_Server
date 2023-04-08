@@ -114,13 +114,35 @@ pub async fn get_item(
         }
         Ok(item) => {
             let _ = context.cache.add_product(id, item.clone());
+
+            let user_id: Option<i32> = get_params(&parts.uri)
+                .get("user_id")
+                .and_then(|c| c.parse().ok());
+            if let Some(user_id) = user_id {
+                let res = context
+                    .db
+                    .mongo_db
+                    .record_product_purchased(user_id, id)
+                    .await;
+                if res.is_err() {
+                    let _ = context
+                        .db
+                        .mongo_db
+                        .record_product_purchased(user_id, id)
+                        .await;
+                }
+            }
+
             create_response(StatusCode::OK, item.to_string())
-        },
+        }
     }
 }
 
 // /add_item
-pub async fn add_item(mut body: Option<Value>, context: Arc<Context>) -> Result<Response<Body>, hyper::Error> {
+pub async fn add_item(
+    mut body: Option<Value>,
+    context: Arc<Context>,
+) -> Result<Response<Body>, hyper::Error> {
     let json_map: Option<&mut serde_json::Map<String, Value>> = body
         .as_mut()
         .and_then(|json: &mut Value| json.as_object_mut());
@@ -150,14 +172,17 @@ pub async fn add_item(mut body: Option<Value>, context: Arc<Context>) -> Result<
         Err(e) => {
             println!("{}", e.to_string());
             create_response(StatusCode::BAD_REQUEST, e.to_string())
-
-        },
+        }
         Ok(id) => create_response(StatusCode::OK, id.to_string()),
     }
 }
 
 // /update_item
-pub async fn update_item(parts: &Parts, mut body: Option<Value>, context: Arc<Context>) -> Result<Response<Body>, hyper::Error> {
+pub async fn update_item(
+    parts: &Parts,
+    mut body: Option<Value>,
+    context: Arc<Context>,
+) -> Result<Response<Body>, hyper::Error> {
     let id = get_id_from_uri(&parts.uri);
 
     if let Err(e) = id {
@@ -170,7 +195,6 @@ pub async fn update_item(parts: &Parts, mut body: Option<Value>, context: Arc<Co
         .as_mut()
         .and_then(|json: &mut Value| json.as_object_mut());
 
-
     if json_map.is_none() {
         return create_response(
             StatusCode::BAD_REQUEST,
@@ -181,12 +205,16 @@ pub async fn update_item(parts: &Parts, mut body: Option<Value>, context: Arc<Co
     let json_map = json_map.unwrap();
 
     let updates = json!(json_map);
-    match context.db.postgres_db.update_product(id, updates.clone()).await {
+    match context
+        .db
+        .postgres_db
+        .update_product(id, updates.clone())
+        .await
+    {
         Err(e) => {
             println!("{}", e.to_string());
             create_response(StatusCode::BAD_REQUEST, e.to_string())
-
-        },
+        }
         Ok(item) => {
             let res = context.cache.update_product(id.clone(), updates);
             if res.is_err() {
@@ -196,10 +224,9 @@ pub async fn update_item(parts: &Parts, mut body: Option<Value>, context: Arc<Co
                 }
             }
             create_response(StatusCode::OK, item.to_string())
-        },
+        }
     }
 }
-
 
 // /delete
 pub async fn delete_item(
@@ -225,7 +252,7 @@ pub async fn delete_item(
                 let _ = context.cache.delete_product(id.clone());
             }
             create_response(StatusCode::OK, String::new())
-        },
+        }
     }
 }
 
@@ -256,15 +283,26 @@ pub async fn buy_item(
     //     );
     // }
 
-    match context
-        .db
-        .postgres_db
-        .purchase(id, count, user_id.unwrap_or(1)
-        )
-        .await
-    {
+    let user_id = user_id.unwrap_or(1);
+
+    match context.db.postgres_db.purchase(id, count, user_id).await {
         Err(error) => create_response(StatusCode::BAD_REQUEST, error.to_string()),
-        Ok(item) => create_response(StatusCode::OK, item.to_string()),
+        Ok(item) => {
+            let res = context
+                .db
+                .mongo_db
+                .record_product_purchased(user_id, id)
+                .await;
+            if res.is_err() {
+                let _ = context
+                    .db
+                    .mongo_db
+                    .record_product_purchased(user_id, id)
+                    .await;
+            }
+
+            create_response(StatusCode::OK, item.to_string())
+        }
     }
 }
 
@@ -316,7 +354,10 @@ pub async fn add_account(
     }
 }
 
-pub async fn login(body: Option<Value>, context: Arc<Context>) -> Result<Response<Body>, hyper::Error> {
+pub async fn login(
+    body: Option<Value>,
+    context: Arc<Context>,
+) -> Result<Response<Body>, hyper::Error> {
     if body.is_none() {
         return create_response(
             StatusCode::BAD_REQUEST,

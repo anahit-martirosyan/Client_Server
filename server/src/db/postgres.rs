@@ -1,15 +1,14 @@
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection,
-    DbErr, EntityTrait, QueryFilter, entity::*
+    entity::*, ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, DbErr, EntityTrait,
+    QueryFilter,
 };
 use serde_json::{json, Map, Value};
 
 use crate::entities::{account, orders, product};
-use crate::utils::{LocalError, round};
+use crate::utils::{round, LocalError};
 
 use chrono::Utc;
 use sea_orm::prelude::Decimal;
-
 
 trait ToError<T> {
     fn to_local_error(self, record_type: RecordType) -> Result<T, LocalError>;
@@ -25,26 +24,24 @@ impl<T> ToError<T> for Result<T, DbErr> {
     fn to_local_error(self, record_type: RecordType) -> Result<T, LocalError> {
         match self {
             Ok(t) => Ok(t),
-            Err(DbErr::RecordNotFound(e)) =>{
+            Err(DbErr::RecordNotFound(e)) => {
                 println!("{}", e);
                 match record_type {
                     RecordType::Product | RecordType::Order => Err(LocalError::IdNotFound),
                     RecordType::User => Err(LocalError::WrongUserOrPassword),
                 }
-            },
+            }
             Err(DbErr::Json(e)) | Err(DbErr::Type(e)) => {
                 println!("{}", e);
                 Err(LocalError::WrongParameters)
-            },
+            }
             Err(e) => {
                 println!("{}", e);
                 Err(LocalError::OperationFailed)
-            },
+            }
         }
     }
 }
-
-
 
 pub struct PostgresDB {
     pub db: DatabaseConnection,
@@ -113,8 +110,7 @@ impl PostgresDB {
     }
 
     pub async fn get_all_products(&self) -> Result<Value, LocalError> {
-        let mut products =
-        product::Entity::find()
+        let mut products = product::Entity::find()
             .all(&self.db)
             .await
             .to_local_error(RecordType::Product)?;
@@ -136,7 +132,11 @@ impl PostgresDB {
         Ok(res.last_insert_id)
     }
 
-    pub async fn update_product(&self, product_id: i32, updates: Value) -> Result<Value, LocalError> {
+    pub async fn update_product(
+        &self,
+        product_id: i32,
+        updates: Value,
+    ) -> Result<Value, LocalError> {
         let product: Option<product::Model> = product::Entity::find_by_id(product_id)
             .one(&self.db)
             .await
@@ -157,50 +157,52 @@ impl PostgresDB {
                         return Err(LocalError::WrongParameters);
                     }
                     product.name = Set(name.unwrap().to_string());
-                },
+                }
                 "image" => {
                     let image = val.as_str();
                     if image.is_none() {
                         return Err(LocalError::WrongParameters);
                     }
                     product.image = Set(Some(image.unwrap().to_string()));
-                },
+                }
                 "count" => {
                     let count = val.as_i64();
                     if count.is_none() {
                         return Err(LocalError::WrongParameters);
                     }
                     product.count = Set(count.unwrap() as i32);
-                },
+                }
                 "price" => {
                     let price = val.as_f64();
                     if price.is_none() {
                         return Err(LocalError::WrongParameters);
                     }
-                    let price = Decimal::from_str_exact( &round(price.unwrap(), 2).to_string());
+                    let price = Decimal::from_str_exact(&round(price.unwrap(), 2).to_string());
                     if price.is_err() {
                         return Err(LocalError::WrongParameters);
                     }
                     product.price = Set(price.unwrap());
-                },
+                }
                 "category" => {
                     let category = val.as_str();
                     if category.is_none() {
                         return Err(LocalError::WrongParameters);
                     }
                     product.category = Set(category.unwrap().to_string());
-                },
+                }
                 _ => {}
             }
         }
 
-        let product: product::Model = product.update(&self.db).await.to_local_error(RecordType::Product)?;
+        let product: product::Model = product
+            .update(&self.db)
+            .await
+            .to_local_error(RecordType::Product)?;
 
         Ok(json!(product))
     }
 
-
-        pub async fn delete_product(&self, product_id: i32) -> Result<(), LocalError> {
+    pub async fn delete_product(&self, product_id: i32) -> Result<(), LocalError> {
         let _ = product::Entity::delete_by_id(product_id)
             .exec(&self.db)
             .await
@@ -269,6 +271,3 @@ impl PostgresDB {
         }
     }
 }
-
-
-

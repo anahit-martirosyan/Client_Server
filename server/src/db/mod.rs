@@ -1,18 +1,15 @@
-use mongodb::{error::Result as MongoResult, Client, Database as MongoDatabase};
-use sea_orm::{Database, DatabaseConnection, DbErr};
 use crate::db::mongo::MongoDB;
 use crate::db::postgres::PostgresDB;
+use mongodb::{error::Result as MongoResult, Client, Database as MongoDatabase};
+use sea_orm::{Database, DatabaseConnection, DbErr};
 
 pub mod mongo;
 pub mod postgres;
-
-
 
 pub struct DB {
     pub postgres_db: PostgresDB,
     pub mongo_db: MongoDB,
 }
-
 
 impl DB {
     #[tokio::main]

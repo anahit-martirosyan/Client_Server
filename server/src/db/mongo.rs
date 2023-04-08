@@ -11,7 +11,13 @@ impl MongoDB {
     pub async fn add_user(&self, user_id: i32) -> MongoResult<()> {
         let collection = self.db.collection::<Document>("records");
 
-        let record = doc! {"user_id": user_id, "account_created": Utc::now().to_string()};
+        let record = doc! {
+            "user_id": user_id,
+            "account_created": Utc::now().to_string(),
+            "last_logged_in": Utc::now().to_string(),
+            "products_viewed": {},
+            "products_purchased": {},
+        };
 
         collection
             .insert_one(record, None)
@@ -20,29 +26,62 @@ impl MongoDB {
     }
 
     pub async fn record_logged_in(&self, user_id: i32) -> Result<(), mongodb::error::Error> {
-        let filter = doc! { "user_id": user_id };
-        let collection = self.db.collection::<Document>("records");
         let update = doc! {"$set": {"last_logged_in": Utc::now().to_string()}};
-        let res = collection
-            .update_one(filter.clone(), update.clone(), None)
-            .await?;
-        if res.matched_count == 0 {
-            let _ = self.add_user(user_id);
-            let _ = collection.update_one(filter, update, None).await?;
-        }
 
-        Ok(())
+        self.update_user_record(user_id, update).await
+    }
+
+    pub async fn record_product_viewed(
+        &self,
+        user_id: i32,
+        product_id: i32,
+    ) -> Result<(), mongodb::error::Error> {
+        let update =
+            doc! {"$set": {format!("products_viewed.{}", product_id): Utc::now().to_string()}};
+
+        self.update_user_record(user_id, update).await
+    }
+
+    pub async fn record_product_purchased(
+        &self,
+        user_id: i32,
+        product_id: i32,
+    ) -> Result<(), mongodb::error::Error> {
+        let update =
+            doc! {"$set": {format!("products_purchased.{}", product_id): Utc::now().to_string()}};
+
+        self.update_user_record(user_id, update).await
     }
 
     pub async fn log_request(&self, uri: &str, body: serde_json::Value) -> MongoResult<()> {
         let collection = self.db.collection::<Document>("logging");
 
         let local_ip = local_ip().unwrap();
-        let record = doc! {"host": local_ip.to_string(), "uri": uri, "request_body": body.to_string()};
+        let record =
+            doc! {"host": local_ip.to_string(), "uri": uri, "request_body": body.to_string()};
 
         collection
             .insert_one(record, None)
             .await
             .and_then(|_| Ok(()))
+    }
+
+    async fn update_user_record(
+        &self,
+        user_id: i32,
+        updates: Document,
+    ) -> Result<(), mongodb::error::Error> {
+        let filter = doc! { "user_id": user_id };
+        let collection = self.db.collection::<Document>("records");
+
+        let res = collection
+            .update_one(filter.clone(), updates.clone(), None)
+            .await?;
+        if res.matched_count == 0 {
+            let _ = self.add_user(user_id);
+            let _ = collection.update_one(filter, updates, None).await?;
+        }
+
+        Ok(())
     }
 }

@@ -1,5 +1,6 @@
 extern crate core;
 
+use crate::cache::redis_cache;
 use crate::context::Context;
 use crate::settings::Settings;
 use crate::utils::get_json_from_body;
@@ -8,7 +9,6 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::{http, Body, Request, Response, Server};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use crate::cache::redis_cache;
 
 mod cache;
 mod context;
@@ -27,11 +27,10 @@ async fn route_service(
 
     println!("method: {}, uri: {}", &parts.method, parts.uri.path());
 
-
     let body_json = get_json_from_body(body).await;
-    if parts.method != Method::OPTIONS && body_json.is_some() {
-        let _ = context.db.mongo_db.log_request(parts.uri.path(), body_json.as_ref().unwrap().clone());
-    }
+    // if parts.method != Method::OPTIONS && body_json.is_some() {
+    //     let _ = context.db.mongo_db.log_request(parts.uri.path(), body_json.as_ref().unwrap().clone());
+    // }
 
     match (&parts.method, parts.uri.path()) {
         (&Method::GET, "/") => handlers::items_redirect(addr),
