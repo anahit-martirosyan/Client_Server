@@ -1,0 +1,14 @@
+network:
+  listen_on:  "0.0.0.0:8080"
+
+postgres:
+  uri: "postgres://dboperator:operatorpass123@172.17.0.7:5434"
+  name: "order_db"
+
+
+#network:
+#  listen_on:  "0.0.0.0:8080"
+#
+#postgres:
+#  uri: "postgres://dboperator:operatorpass123@localhost:5245"
+#  name: "order_db"

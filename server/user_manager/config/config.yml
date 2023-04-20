@@ -1,0 +1,23 @@
+network:
+  listen_on:  "0.0.0.0:8080"
+
+postgres:
+  uri: "postgres://dboperator:operatorpass123@172.17.0.5:5433"
+  name: "user_db"
+
+mongodb:
+  uri: "mongodb://172.17.0.6:27018"
+  name: "users"
+
+
+
+#network:
+#  listen_on:  "0.0.0.0:8080"
+#
+#postgres:
+#  uri: "postgres://dboperator:operatorpass123@localhost:5244"
+#  name: "user_db"
+#
+#mongodb:
+#  uri: "mongodb://localhost:27018"
+#  name: "users"

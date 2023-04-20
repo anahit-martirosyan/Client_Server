@@ -1,0 +1,39 @@
+network:
+  listen_on:  "0.0.0.0:8080"
+
+postgres:
+  uri: "postgres://dboperator:operatorpass123@172.17.0.3:5432"
+  name: "product_db"
+
+mongodb:
+  uri: "mongodb://172.17.0.2:27017"
+  name: "products"
+
+redis:
+  uri: "redis://172.17.0.4:6379"
+
+user_manager:
+  uri: "172.17.0.9:8080"
+
+order_manager:
+  uri: "172.17.0.10:8080"
+
+#network:
+#  listen_on:  "0.0.0.0:8080"
+#
+#postgres:
+#  uri: "postgres://dboperator:operatorpass123@localhost:5243"
+#  name: "product_db"
+#
+#mongodb:
+#  uri: "mongodb://localhost:27017"
+#  name: "products"
+#
+#redis:
+#  uri: "redis://127.0.0.1:6378"
+#
+#user_manager:
+#  uri: "127.0.0.1:8080"
+#
+#order_manager:
+#  uri: "127.0.0.1:8080"
